@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QDebug>
+#include <libs/windows/include/zmq.h>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -56,7 +57,10 @@ MainWindow::MainWindow(QWidget *parent)
     plot = new Plot;
     plot->show();
 
-    qDebug()<<"start..."<<endl;
+    qDebug()<<"start..."<<Qt::endl;
+    int major, minor, patch;
+    zmq_version (&major, &minor, &patch);
+    qDebug()<<"VERSION:"<< major<<minor<<patch;
 }
 
 MainWindow::~MainWindow()
