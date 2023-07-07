@@ -429,108 +429,148 @@ void MainWindow::slot_serialPort_readyRead(void)
 //对接收数据流进行协议解析
 void MainWindow::processRecvProtocol(QByteArray *baRecvData)
 {
-    int num = baRecvData->size();
+    int32_t num = baRecvData->size();
+    int32_t nextOffsetStartfindHeader = 0;
+    int32_t offset=0;
 
+    // 在协议解析选项卡中显示单次串口接收到的数据
     if(showFramData){
         QString str1 = QString(baRecvData->toHex(' ').toUpper());
         ui->plainTextEditFrameData->appendPlainText(str1);    //自动换行
     }
 
-    if(num) {
-        for(int i=0; i<num; i++){
-            switch(STATE) {
-            //查找第一个帧头
-            case FIND_HEADER1:
-                if(baRecvData->at(i) == 0x3A){
-                    STATE = FIND_HEADER2;
-                }
-                break;
-            //查找第二个帧头
-            case FIND_HEADER2:
-                if(baRecvData->at(i) == 0x3B){
-                    //找到第二个帧头
-                    STATE = CHECK_FUNWORD;
-                }
-                else if(baRecvData->at(i) == 0x3A){
-                    //避免漏掉3A 3A 3B xx情况
-                    STATE = FIND_HEADER2;
-                }
-                else
-                    STATE = FIND_HEADER1;
-                break;
-            //检查功能字是否合规
-            case CHECK_FUNWORD:
-                if(baRecvData->at(i) == 0x01){
-                    funWord = baRecvData->at(i);
-                    STATE = CHECK_DATALEN;
-                }
-                else{
-                    funWord = 0;
-                    STATE = FIND_HEADER1;
-                }
-                break;
-            //判断数据长度是否合规
-            case CHECK_DATALEN:
-                if(baRecvData->at(i) <= 32*2){
-                    //限制最大接收长度64字节，即32个ch
-                    dataLen = baRecvData->at(i);
-                    STATE = TAKE_DATA;
-                }
-                else{
-                    dataLen = 0;
-                    STATE = FIND_HEADER1;
-                }
-                break;
-            //接收所有数据
-            case TAKE_DATA:
-                if(dataLenCnt < dataLen){
-                    baRecvDataBuf.append(baRecvData->at(i));
-                    dataLenCnt++;
-                    //满足条件后立刻转入下个状态
-                    if(dataLenCnt >= dataLen){
-                        dataLenCnt = 0;
-                        STATE = CHECK_CRC;
-                    }
-                }
-                break;
-            //CRC校验
-            case CHECK_CRC:
-                crc = 0x3A + 0X3B + funWord + dataLen;
-                for(int c=0; c<dataLen; c++){
-                    crc += baRecvDataBuf[c];
+    if(!num){
+        qDebug()<<"recv 0 bytes"<<Qt::endl;
+    }
+    else{
+        STATE = S_FIND_HEADER;
+        // 检查格式正确
+        while(true){
+            if(STATE==S_FIND_HEADER){
+                if(num-nextOffsetStartfindHeader<8){
+                    //没有可能找到最短的有效数据帧 8Byte
+                    break;
                 }
 
-                //校验通过，数据有效
-                if(crc == baRecvData->at(i)){
-                    if(showPlotData){
-                        QString str2 = QString(baRecvDataBuf.toHex(' ').toUpper());
-                        ui->plainTextEditPlotData->appendPlainText(str2);    //自动换行
+                for(offset=nextOffsetStartfindHeader; offset<num; offset++){
+                    if((baRecvData->at(offset) == dataProtocol.header1)
+                            &&(baRecvData->at(offset+1) == dataProtocol.header2)){
+                        STATE = S_CHECK_DATATYPE;
+                        break;
                     }
-                    plot->onNewDataArrived(baRecvDataBuf);
-                    saveCsvFile(baRecvDataBuf);
+                    nextOffsetStartfindHeader = offset + 1;
+                }
+            }
 
+            if(STATE==S_CHECK_DATATYPE){
+                dataProtocol.dataType = baRecvData->at(offset+2);
+                if((dataProtocol.dataType == 0x01)
+                        ||(dataProtocol.dataType == 0x02)
+                        ||(dataProtocol.dataType == 0x03)){
+                    STATE = S_CHECK_DATASAMPLEBYTE;
+                }
+                else{
+                    dataProtocol.dataType = 0;
+                    STATE = S_FIND_HEADER;
+                }
+            }
+
+            if(STATE==S_CHECK_DATASAMPLEBYTE){
+                dataProtocol.dataSampleByte = baRecvData->at(offset+3);
+                if((dataProtocol.dataSampleByte == 0x01)
+                        ||(dataProtocol.dataSampleByte == 0x02)
+                        ||(dataProtocol.dataSampleByte == 0x03)){
+                    STATE = S_CHECK_DATACHANNEL;
+                }
+                else{
+                    dataProtocol.dataSampleByte = 0;
+                    STATE = S_FIND_HEADER;
+                }
+            }
+
+
+            if(STATE==S_CHECK_DATACHANNEL){
+                dataProtocol.dataChannel = baRecvData->at(offset+4);
+                if(dataProtocol.dataChannel <= MAX_NUM_CHANNELS){
+                    STATE = S_CHECK_TAIL;
+                }
+                else{
+                    dataProtocol.dataChannel = 0;
+                    STATE = S_FIND_HEADER;
+                }
+            }
+
+            if(STATE==S_CHECK_TAIL){
+                int32_t offsetTail1 = offset+4+(dataProtocol.dataSampleByte*dataProtocol.dataChannel)+1;
+                int32_t offsetTail2 = offsetTail1 + 1;
+                if(offsetTail2+1>num){
+                    // 数据帧超出有效边界
+                    break;
+                }
+
+                if((baRecvData->at(offsetTail1) == dataProtocol.tail1)
+                        &&(baRecvData->at(offsetTail2) == dataProtocol.tail2)){
+                    nextOffsetStartfindHeader = offsetTail2 + 1;
                     curRecvFrameNum++; //有效帧数量计数
+                    STATE = S_PROCESS_DATA;
                 }
                 else{
+                    dataProtocol.dataChannel = 0;
                     recvFrameCrcErrNum++; //误码帧数量计数
+                    STATE = S_FIND_HEADER;
+                }
+            }
+
+            if(STATE==S_PROCESS_DATA){
+                int32_t firstDataOffset = offset + OFFSET_DATA;
+                for(int32_t i=0; i<dataProtocol.dataChannel*dataProtocol.dataSampleByte; i++){
+                    baRecvDataBuf.append(baRecvData->at(firstDataOffset+i));
+                }
+                if(showPlotData){
+
+                    QString str2 = QString(baRecvDataBuf.toHex(' ').toUpper());
+                    ui->plainTextEditPlotData->appendPlainText(str2);    //自动换行
                 }
 
-                //清除暂存数据
+                plot->onNewDataArrived(baRecvDataBuf);
                 baRecvDataBuf.clear();
-                funWord=0;
-                dataLen=0;
-                dataLenCnt=0;
-                crc=0;
-                STATE = FIND_HEADER1;
-                break;
+
+//                // ADC 数据
+//                if(dataProtocol.dataType==0x01){
+//                    uint32_t adcData;
+//                    float vol;
+
+//                    for(uint32_t i=0; i<dataProtocol.dataChannel*dataProtocol.dataSampleByte; i=i+dataProtocol.dataSampleByte){
+//                        if(dataProtocol.dataSampleByte==0x01){
+//                            adcData = (uint32_t)(baRecvData->at(firstDataOffset+i));
+//                            vol = (float)(adcData/256 *3.3);    //参考电压3.3V
+//                        }
+//                        else if(dataProtocol.dataSampleByte==0x02){
+//                            adcData = ((uint32_t)(baRecvData->at(firstDataOffset+i))<<8) + (uint32_t)(baRecvData->at(firstDataOffset+i+1));
+//                            vol = (float)(adcData/65535 *3.3);    //参考电压3.3V
+//                        }
+//                        else if(dataProtocol.dataSampleByte==0x03){
+//                            adcData = ((uint32_t)(baRecvData->at(firstDataOffset+i))<<16) + ((uint32_t)(baRecvData->at(firstDataOffset+i+1))<<8) + (uint32_t)(baRecvData->at(firstDataOffset+i+2));
+//                            vol = (float)(adcData/16777216 *3.3);    //参考电压3.3V
+//                        }
+
+//                        samples[sampleNumber++] = vol;
+//                    }
+//                }
+//                else if(dataProtocol.dataType==0x02){
+//                    qDebug()<<"recv 6aix data"<<Qt::endl;
+//                }
+//                else if(dataProtocol.dataType==0x03){
+//                    qDebug()<<"recv trigger data"<<Qt::endl;
+//                }
 
 
-            default:
-                STATE = FIND_HEADER1;
-                break;
+                STATE = S_FIND_HEADER;
             }
         }
+
     }
+
 }
 //-----------------------
 
@@ -566,16 +606,14 @@ void MainWindow::slot_timerWaveGene_timeout()
 {
     static float x;
     char y1,y2;
-    char crc;
 
     x += 0.01;
     y1 = sin(x)*50;
     y2 = cos(x)*100;
-    crc = 0x3A+0x3B+0x01+0x02+y1+y2;
 
     QByteArray ba;
-    ba.append(0x3A).append(0x3B).append(0x01).append(0x02).append(y1).append(y2).append(crc);
-
+    ba.append(0x5A).append(0x5A).append(0x01).append(0x01).append(0x02);
+    ba.append(y1).append(y2).append(0xA5).append(0xA5);
     // 如发送成功，会返回发送的字节长度。失败，返回-1。
     int ret = serialPort->write(ba);
 

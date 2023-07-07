@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+
 #include <QMainWindow>
 #include <QSerialPort>
 #include <QSerialPortInfo>
@@ -16,12 +17,38 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
-#define FIND_HEADER1      1
-#define FIND_HEADER2      2
-#define CHECK_FUNWORD     3
-#define CHECK_DATALEN     4
-#define TAKE_DATA         5
-#define CHECK_CRC         6
+#define MAX_NUM_CHANNELS 100
+#define MAX_NUM_SAMPLES  10000
+
+enum ParseState
+{
+    S_FIND_HEADER = 0,
+    S_CHECK_DATATYPE,
+    S_CHECK_DATASAMPLEBYTE,
+    S_CHECK_DATACHANNEL,
+    S_PROCESS_DATA,
+    S_CHECK_TAIL
+};
+
+enum ProtocolOffset
+{
+    OFFSET_HEADER = 0,
+    OFFSET_DATATYPE = 2,
+    OFFSET_DATASAMPLEBYTE = 3,
+    OFFSET_DATACHANNEL = 4,
+    OFFSET_DATA = 5
+};
+
+struct DataProtocol
+{
+    const char header1 = 0x5A;
+    const char header2 = 0x5A;
+    const char tail1 = 0xA5;
+    const char tail2 = 0xA5;
+    char dataType;
+    char dataSampleByte;
+    char dataChannel;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -90,11 +117,12 @@ private:
 
     //-----------------------
     QByteArray baRecvDataBuf;   //接收数据流暂存
-    int STATE=FIND_HEADER1;     //接受数据处理状态机
-    char funWord=0;             //协议-功能字
-    char dataLen=0;             //协议-有效数据长度
-    char dataLenCnt=0;          //协议-有效数据长度计数
-    char crc=0;                 //协议-校验
+    ParseState STATE=S_FIND_HEADER;     //接受数据处理状态机
+    uint64_t sampleNumber=0;
+    //float samples[MAX_NUM_SAMPLES * MAX_NUM_CHANNELS];
+
+
+    struct DataProtocol dataProtocol;
 
     bool showFramData=false;    //是否显示帧数据
     bool showPlotData=false;    //是否显示有效数据
