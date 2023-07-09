@@ -85,7 +85,7 @@ private:
     void setupPlot();           //初始化Plot相关配置
 
 public:
-    void onNewDataArrived(QByteArray baRecvData);  //plot数据填写，与数据刷新分开
+    void onNewDataArrived(float *samples, uint8_t nchannels);  //plot数据填写，与数据刷新分开
 };
 
 #endif // PLOT_H

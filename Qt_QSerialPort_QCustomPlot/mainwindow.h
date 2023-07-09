@@ -10,12 +10,23 @@
 #include <QTimer>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QDebug>
+
 #include "plot.h"
+
+#include <libs/windows/include/zmq.h>
+#include "flatbuffers/flatbuffers.h"
+#include "channel_generated.h"
 
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+#define LOGC(strInfo) qDebug()<<"C:"<<strInfo<<Qt::endl
+#define LOGD(strInfo) qDebug()<<"D:"<<strInfo<<Qt::endl
+#define LOGE(strInfo) qDebug()<<"E:"<<strInfo<<Qt::endl
+#define jassert assert
 
 #define MAX_NUM_CHANNELS 100
 #define MAX_NUM_SAMPLES  10000
@@ -23,6 +34,7 @@ QT_END_NAMESPACE
 enum ParseState
 {
     S_FIND_HEADER = 0,
+    S_CHECK_COUNTER,
     S_CHECK_DATATYPE,
     S_CHECK_DATASAMPLEBYTE,
     S_CHECK_DATACHANNEL,
@@ -32,22 +44,34 @@ enum ParseState
 
 enum ProtocolOffset
 {
-    OFFSET_HEADER = 0,
-    OFFSET_DATATYPE = 2,
-    OFFSET_DATASAMPLEBYTE = 3,
-    OFFSET_DATACHANNEL = 4,
-    OFFSET_DATA = 5
+    OFFSET_HEADER1 = 0,
+    OFFSET_HEADER2,
+    OFFSET_COUNTER,
+    OFFSET_DATATYPE,
+    OFFSET_DATASAMPLEBYTE,
+    OFFSET_DATACHANNEL,
+    OFFSET_DATA
 };
 
 struct DataProtocol
 {
-    const char header1 = 0x5A;
-    const char header2 = 0x5A;
-    const char tail1 = 0xA5;
-    const char tail2 = 0xA5;
-    char dataType;
-    char dataSampleByte;
-    char dataChannel;
+    const uint8_t header1 = 0x5A;
+    const uint8_t header2 = 0x5A;
+    const uint8_t tail1 = 0xA5;
+    const uint8_t tail2 = 0xA5;
+    uint8_t counter;
+    uint8_t dataType;
+    uint8_t dataSampleByte;
+    uint8_t dataChannel;
+};
+
+struct ZmqData
+{
+    uint32_t numChannels=0;
+    uint32_t numSamples=0;
+    uint64_t sampleNum=0;
+    double timestamp=0;
+    uint32_t sampleRate=0;
 };
 
 class MainWindow : public QMainWindow
@@ -82,6 +106,12 @@ private slots:
     void on_checkBoxWaveGeneStart_stateChanged(int arg1);   //tab4 仿真波形开始
 
     void on_actionPlotShow_triggered();     //显示Plot窗口
+
+    void on_checkBoxUseQCustomPlot_stateChanged(int arg1);
+
+    void on_checkBoxUseOpenEphysGUI_stateChanged(int arg1);
+
+    void on_lineEditZmqTcpPort_textChanged(const QString &arg1);
 
 private:
     void changeEncodeStrAndHex(QPlainTextEdit *plainTextEdit,int arg1); //切换字符编码与16进制
@@ -118,15 +148,32 @@ private:
     //-----------------------
     QByteArray baRecvDataBuf;   //接收数据流暂存
     ParseState STATE=S_FIND_HEADER;     //接受数据处理状态机
-    uint64_t sampleNumber=0;
-    //float samples[MAX_NUM_SAMPLES * MAX_NUM_CHANNELS];
-
-
+    uint64_t dataSizeForQCustomPlot=0;
+    float *samplesForQCustomPlot;
+    uint64_t dataSizeForOpenEphysGUI=0;
+    float *samplesForOpenEphysGUI;
+    uint16_t lastEventCode=0;
+    std::vector<uint16_t> eventCodesForOpenEphysGUI;
     struct DataProtocol dataProtocol;
+
+    //------------------------
+    void *context;
+    void *socket;
+    uint32_t port=3335;
+    int messageNumber;
+    struct ZmqData zmqData;
+    void zmqSendData(const float *bufferChanPtrs,
+                                uint32_t nChannels, uint32_t nSamples,
+                                uint64_t sampleNumber, double timestamp, uint32_t sampleRate);
+    void createSocket();
+    void closeSocket();
+    flatbuffers::FlatBufferBuilder flatBuilder;
+
 
     bool showFramData=false;    //是否显示帧数据
     bool showPlotData=false;    //是否显示有效数据
-
+    bool useQCustomPlot=false;
+    bool useOpenEphysGUI=false;
     //-----------------------
     // 波形绘图窗口
     Plot *plot = NULL;// 必须初始化为空，否则后面NEW判断的时候会异常结束

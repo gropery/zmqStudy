@@ -23,6 +23,23 @@ SOURCES += \
     qcustomplot\qcustomplot.cpp
 
 HEADERS += \
+    channel_generated.h \
+    flatbuffers/base.h \
+    flatbuffers/code_generators.h \
+    flatbuffers/flatbuffers.h \
+    flatbuffers/flatc.h \
+    flatbuffers/flexbuffers.h \
+    flatbuffers/grpc.h \
+    flatbuffers/hash.h \
+    flatbuffers/idl.h \
+    flatbuffers/minireflect.h \
+    flatbuffers/pch/flatc_pch.h \
+    flatbuffers/pch/pch.h \
+    flatbuffers/reflection.h \
+    flatbuffers/reflection_generated.h \
+    flatbuffers/registry.h \
+    flatbuffers/stl_emulation.h \
+    flatbuffers/util.h \
     libs/windows/include/zmq.h \
     mainwindow.h \
     openserialport.h \

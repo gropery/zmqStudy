@@ -15,6 +15,115 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout_3">
+    <item row="1" column="0">
+     <layout class="QHBoxLayout" name="horizontalLayout_5">
+      <item>
+       <widget class="QLabel" name="labelSendNum">
+        <property name="text">
+         <string>S: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_7">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelSendRate">
+        <property name="text">
+         <string>Byte/s: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_6">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRecvNum">
+        <property name="text">
+         <string>R: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_5">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRecvRate">
+        <property name="text">
+         <string>Byte/s: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_4">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRecvFrameNum">
+        <property name="text">
+         <string>FNum: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_3">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRecvFrameRate">
+        <property name="text">
+         <string>FPS: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_2">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRecvFrameErrNum">
+        <property name="text">
+         <string>FErr: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRecvFrameMissNum">
+        <property name="text">
+         <string>FMiss: 0</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
     <item row="0" column="0">
      <widget class="QSplitter" name="splitter_2">
       <property name="sizePolicy">
@@ -263,6 +372,9 @@
                 <property name="text">
                  <string>停止显示</string>
                 </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
                </widget>
               </item>
               <item row="0" column="0">
@@ -301,7 +413,7 @@
         </size>
        </property>
        <property name="currentIndex">
-        <number>3</number>
+        <number>4</number>
        </property>
        <widget class="QWidget" name="tab_1">
         <attribute name="title">
@@ -819,117 +931,67 @@
          </item>
         </layout>
        </widget>
+       <widget class="QWidget" name="tab_4">
+        <attribute name="title">
+         <string>波形绘制</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_7">
+         <item row="0" column="0">
+          <layout class="QVBoxLayout" name="verticalLayout_8">
+           <item>
+            <widget class="QCheckBox" name="checkBoxUseQCustomPlot">
+             <property name="text">
+              <string>UseQCustomPlot</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="checkBoxUseOpenEphysGUI">
+             <property name="text">
+              <string>UseOpenEphysGUI</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_8">
+             <item>
+              <widget class="QLabel" name="label_3">
+               <property name="text">
+                <string>ZMQ TCP PORT:</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="lineEditZmqTcpPort">
+               <property name="text">
+                <string>3335</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </item>
+         <item row="0" column="1">
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>244</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
       </widget>
      </widget>
-    </item>
-    <item row="1" column="0">
-     <layout class="QHBoxLayout" name="horizontalLayout_5">
-      <item>
-       <widget class="QLabel" name="labelSendNum">
-        <property name="text">
-         <string>S: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_7">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelSendRate">
-        <property name="text">
-         <string>Byte/s: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_6">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRecvNum">
-        <property name="text">
-         <string>R: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_5">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRecvRate">
-        <property name="text">
-         <string>Byte/s: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_4">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRecvFrameNum">
-        <property name="text">
-         <string>FNum: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_3">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRecvFrameRate">
-        <property name="text">
-         <string>FPS: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_2">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRecvFrameErrNum">
-        <property name="text">
-         <string>FErr: 0</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRecvFrameMissNum">
-        <property name="text">
-         <string>FMiss: 0</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
     </item>
    </layout>
   </widget>

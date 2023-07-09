@@ -132,15 +132,12 @@ void Plot::setupPlot()
 //------------------------------------------------------------------
 // plot数据填写，与数据刷新分开
 // 数据宽度8bit
-void Plot::onNewDataArrived(QByteArray baRecvData)
+void Plot::onNewDataArrived(float *samples, uint8_t nchannels)
 {
-    static int num = 0;
     static int channelIndex = 0;
 
     if (isPlotting){
-        num = baRecvData.size();
-
-        for (int i = 0; i < num; i++){
+        for (uint8_t i = 0; i < nchannels; i++){
             if(ui->plot->plottableCount() <= channelIndex){
                 /* Add new channel data */
                 ui->plot->addGraph();
@@ -155,7 +152,7 @@ void Plot::onNewDataArrived(QByteArray baRecvData)
             }
 
             /* Add data to Graph */
-            ui->plot->graph(channelIndex)->addData (dataPointNumber, baRecvData[channelIndex]);
+            ui->plot->graph(channelIndex)->addData (dataPointNumber, samples[channelIndex]);
             /* Increment data number and channel */
             channelIndex++;
         }
