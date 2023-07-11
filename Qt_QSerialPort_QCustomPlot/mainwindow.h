@@ -12,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QDebug>
 
+
 #include "plot.h"
 
 #include <libs/windows/include/zmq.h>
@@ -147,6 +148,9 @@ private:
 
     //-----------------------
     QByteArray baRecvDataBuf;   //接收数据流暂存
+    bool needPushDataFront = false;
+    QByteArray baRecvDataBufTmp;
+
     ParseState STATE=S_FIND_HEADER;     //接受数据处理状态机
     uint64_t dataSizeForQCustomPlot=0;
     float *samplesForQCustomPlot;
@@ -160,7 +164,7 @@ private:
     void *context;
     void *socket;
     uint32_t port=3335;
-    int messageNumber;
+    int messageNumber=0;
     struct ZmqData zmqData;
     void zmqSendData(const float *bufferChanPtrs,
                                 uint32_t nChannels, uint32_t nSamples,

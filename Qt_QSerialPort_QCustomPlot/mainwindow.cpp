@@ -57,16 +57,19 @@ MainWindow::MainWindow(QWidget *parent)
     plot = new Plot;
     plot->show();
 
+    // 为绘图程序申请数据暂存缓存
     samplesForQCustomPlot = (float*) malloc(MAX_NUM_CHANNELS*MAX_NUM_SAMPLES);
     samplesForOpenEphysGUI = (float*) malloc(MAX_NUM_CHANNELS*MAX_NUM_SAMPLES);
 
 
+    // ZMQ 初始化
     int major, minor, patch;
     zmq_version (&major, &minor, &patch);
-    qDebug()<<"VERSION:"<< major<<minor<<patch;
+    qDebug()<<"ZMQ VERSION:"<< major<<minor<<patch;
     context = zmq_ctx_new();
-    messageNumber = 0;
-    port = 3335;
+
+    useQCustomPlot = ui->checkBoxUseQCustomPlot->isChecked();
+    useOpenEphysGUI = ui->checkBoxUseOpenEphysGUI->isChecked();
 }
 
 MainWindow::~MainWindow()
@@ -108,6 +111,8 @@ void MainWindow::createSocket()
             LOGE(zmq_strerror(zmq_errno()));
             jassert(false);
         }
+
+        qDebug()<<"Create ZMQ socket and bind port success"<<Qt::endl;
     }
 }
 
@@ -116,7 +121,7 @@ void MainWindow::closeSocket()
 {
     if (socket)
     {
-        LOGD("Closing data socket");
+        LOGD("Closing ZMQ socket");
         zmq_close(socket);
         socket = 0;
     }
@@ -482,6 +487,7 @@ void MainWindow::slot_serialPort_readyRead(void)
 void MainWindow::processRecvProtocol(QByteArray *baRecvData)
 {
     uint32_t num = baRecvData->size();
+    uint32_t num1 = num; //当前数据长度暂存
     uint32_t nextOffsetStartfindHeader = 0;
     uint32_t offset=0;
 
@@ -495,35 +501,57 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
         qDebug()<<"recv 0 bytes"<<Qt::endl;
     }
     else{
+        // 前一帧数据有余留,则需要合并余留数据到当前接收帧的前面
+        if(needPushDataFront==true){
+            baRecvData->push_front(baRecvDataBufTmp);
+            baRecvDataBufTmp.clear();
+            // 得到合并后的数据长度
+            num = baRecvData->size();
+        }
+
+        // 从查找帧头开始检查帧格式是否正确
         STATE = S_FIND_HEADER;
-        // 检查格式正确
         while(true){
             if(STATE==S_FIND_HEADER){
-                if(num<nextOffsetStartfindHeader+8){
-                    //没有可能找到最短的有效数据帧 8Byte
+                //保证检查不会超出数据边界
+                if(nextOffsetStartfindHeader+OFFSET_HEADER2>=num)
                     break;
-                }
 
                 for(offset=nextOffsetStartfindHeader; offset<num; offset++){
-                    nextOffsetStartfindHeader = offset + 1;
-
                     if(((uint8_t)baRecvData->at(offset+OFFSET_HEADER1) == dataProtocol.header1)
                             &&((uint8_t)baRecvData->at(offset+OFFSET_HEADER2) == dataProtocol.header2)){
                         STATE = S_CHECK_COUNTER;
                         break;
                     }
+                    else{
+                        // 如果找不到帧头,则偏移1位继续查找
+                        nextOffsetStartfindHeader = offset + 1;
+                    }
                 }
             }
 
+
             if(STATE==S_CHECK_COUNTER){
+                //保证检查不会超出数据边界
+                if(offset+OFFSET_COUNTER>=num)
+                    break;
+
                 uint8_t tmp = (uint8_t)baRecvData->at(offset+OFFSET_COUNTER);
 
-                if(dataProtocol.counter==255){
+                if(dataProtocol.counter==tmp){
+                    if(!needPushDataFront){
+                        // 如果累加值相等, 且当前数据未经过拼接, 则判定丢帧
+                        qDebug()<<"recv miss frame: "<<dataProtocol.counter<<"->"<<tmp<<"num1:"<<num1<<"num: "<<num<<Qt::endl;
+                    }
+                }
+                else if(dataProtocol.counter==255){
                     if(tmp!=0){
-                        qDebug()<<"recv miss frame: "<<dataProtocol.counter<<"->"<<tmp<<"num:"<<num<<Qt::endl;
+                        // counter值最大未255, 此时为边界情况
+                        qDebug()<<"recv miss frame: "<<dataProtocol.counter<<"->"<<tmp<<"num1:"<<num1<<"num: "<<num<<Qt::endl;
                     }
                 }else if(tmp-dataProtocol.counter!=1){
-                    qDebug()<<"recv miss frame: "<<dataProtocol.counter<<"->"<<tmp<<"num:"<<num<<Qt::endl;
+                    // 其他情况
+                    qDebug()<<"recv miss frame: "<<dataProtocol.counter<<"->"<<tmp<<"num1:"<<num1<<"num: "<<num<<Qt::endl;
                 }
 
                 dataProtocol.counter = tmp;
@@ -531,6 +559,10 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
             }
 
             if(STATE==S_CHECK_DATATYPE){
+                //保证检查不会超出数据边界
+                if(offset+OFFSET_DATATYPE>=num)
+                    break;
+
                 dataProtocol.dataType = (uint8_t)baRecvData->at(offset+OFFSET_DATATYPE);
                 if((dataProtocol.dataType == 0x01)
                         ||(dataProtocol.dataType == 0x02)
@@ -539,11 +571,16 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                 }
                 else{
                     dataProtocol.dataType = 0;
+                    nextOffsetStartfindHeader = offset + 1;
                     STATE = S_FIND_HEADER;
                 }
             }
 
             if(STATE==S_CHECK_DATASAMPLEBYTE){
+                //保证检查不会超出数据边界
+                if(offset+OFFSET_DATASAMPLEBYTE>=num)
+                    break;
+
                 dataProtocol.dataSampleByte = (uint8_t)baRecvData->at(offset+OFFSET_DATASAMPLEBYTE);
                 if((dataProtocol.dataSampleByte == 0x01)
                         ||(dataProtocol.dataSampleByte == 0x02)
@@ -552,18 +589,24 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                 }
                 else{
                     dataProtocol.dataSampleByte = 0;
+                    nextOffsetStartfindHeader = offset + 1;
                     STATE = S_FIND_HEADER;
                 }
             }
 
 
             if(STATE==S_CHECK_DATACHANNEL){
+                //保证检查不会超出数据边界
+                if(offset+OFFSET_DATACHANNEL>=num)
+                    break;
+
                 dataProtocol.dataChannel = (uint8_t)baRecvData->at(offset+OFFSET_DATACHANNEL);
                 if(dataProtocol.dataChannel <= MAX_NUM_CHANNELS){
                     STATE = S_CHECK_TAIL;
                 }
                 else{
                     dataProtocol.dataChannel = 0;
+                    nextOffsetStartfindHeader = offset + 1;
                     STATE = S_FIND_HEADER;
                 }
             }
@@ -571,11 +614,9 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
             if(STATE==S_CHECK_TAIL){
                 uint32_t offsetTail1 = offset+OFFSET_DATACHANNEL+(dataProtocol.dataSampleByte*dataProtocol.dataChannel)+1;
                 uint32_t offsetTail2 = offsetTail1 + 1;
-                if(offsetTail2+1>num){
-                    // 数据帧超出有效边界
+                //保证检查不会超出数据边界
+                if(offsetTail2>=num)
                     break;
-                }
-
 
                 if(((uint8_t)baRecvData->at(offsetTail1) == dataProtocol.tail1)
                         &&((uint8_t)baRecvData->at(offsetTail2) == dataProtocol.tail2)){
@@ -584,8 +625,8 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                     STATE = S_PROCESS_DATA;
                 }
                 else{
-                    dataProtocol.dataChannel = 0;
                     recvFrameCrcErrNum++; //误码帧数量计数
+                    nextOffsetStartfindHeader = offset + 1;
                     STATE = S_FIND_HEADER;
                 }
             }
@@ -594,7 +635,7 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                 // 暂存当前帧有效数据首处位置
                 uint32_t firstDataOffset = offset + OFFSET_DATA;
 
-                // 只打印格式正确的数据
+                // 在协议解析选显卡中打印帧格式正确的数据
                 if(showPlotData){
                     for(int32_t i=0; i<dataProtocol.dataChannel*dataProtocol.dataSampleByte; i++){
                         baRecvDataBuf.append(baRecvData->at(firstDataOffset+i));
@@ -604,7 +645,7 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                     baRecvDataBuf.clear();
                 }
 
-                // ADC 数据
+                // ADC数据
                 if(dataProtocol.dataType==0x01){
                     uint32_t adcData;
                     float vol;
@@ -622,28 +663,27 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                             adcData = ((uint32_t)((uint8_t)baRecvData->at(firstDataOffset+i))<<16) + ((uint32_t)((uint8_t)baRecvData->at(firstDataOffset+i+1))<<8) + (uint32_t)((uint8_t)baRecvData->at(firstDataOffset+i+2));
                             vol = (float)adcData/16777216 *3.3;
                         }
+                        // adc float数据存入缓存
                         samplesForQCustomPlot[dataSizeForQCustomPlot++] = vol;
                         samplesForOpenEphysGUI[dataSizeForOpenEphysGUI++] = vol;
                     }
 
+                    // trigger数据存入缓存
                     eventCodesForOpenEphysGUI.push_back(lastEventCode);
-
-                    zmqData.numChannels = dataProtocol.dataChannel;
+                    // 当前块中adc采样点数
                     zmqData.numSamples++;
-                    zmqData.timestamp = 0;
-                    zmqData.sampleRate = 0;
                 }
                 // 6轴数据
                 else if(dataProtocol.dataType==0x02){
-                    lastEventCode = (uint16_t)(uint8_t)baRecvData->at(firstDataOffset);
+                    qDebug()<<"recv 6 axis data"<<Qt::endl;
                 }
                 // event数据
                 else if(dataProtocol.dataType==0x03){
-                    qDebug()<<"recv trigger data"<<Qt::endl;
+                    lastEventCode = (uint16_t)(uint8_t)baRecvData->at(firstDataOffset);
                 }
 
 
-                // 使用QCustomPlot绘制波形
+                // 使用QCustomPlot绘制波形, 每次串口送入1个sample的数据, 即刻送入QCustomPlot
                 if(useQCustomPlot){
                     dataSizeForQCustomPlot = 0;
                     plot->onNewDataArrived(samplesForQCustomPlot, dataProtocol.dataChannel);
@@ -652,24 +692,44 @@ void MainWindow::processRecvProtocol(QByteArray *baRecvData)
                     dataSizeForQCustomPlot = 0;
                 }
 
-                // 使用OpenEphysGUI绘制波形
+                // 使用OpenEphysGUI绘制波形, 缓存串口送入数据, 直到有300个采样点, 再通过ZMQ发送出去
                 if(useOpenEphysGUI){
                     if(zmqData.numSamples>300){
+                        zmqData.numChannels = dataProtocol.dataChannel;
+                        zmqData.timestamp = (double)GetTickCount()/1000;
+                        zmqData.sampleRate = 0;
+
                         zmqSendData(samplesForOpenEphysGUI, zmqData.numChannels, zmqData.numSamples,
                                     zmqData.sampleNum, zmqData.timestamp, zmqData.sampleRate);
 
+                        // 从采样开始记录的采样点位置
                         zmqData.sampleNum += zmqData.numSamples;
+                        // 当前block采样点数清零
                         zmqData.numSamples = 0;
                         dataSizeForOpenEphysGUI = 0;
                         eventCodesForOpenEphysGUI.clear();
                     }
                 }
                 else{
+                    zmqData.numSamples = 0;
                     dataSizeForOpenEphysGUI = 0;
+                    eventCodesForOpenEphysGUI.clear();
                 }
 
                 STATE = S_FIND_HEADER;
             }
+        }
+
+        // 当前帧剩余数据无法解析成一个完整的帧, 则暂存预留数据
+        if(nextOffsetStartfindHeader<num){
+            needPushDataFront = true;
+
+            for(uint32_t i=nextOffsetStartfindHeader; i<num; i++)
+                baRecvDataBufTmp.push_back((uint8_t)baRecvData->at(i));
+
+        }
+        else{
+            needPushDataFront = false;
         }
 
     }
@@ -749,6 +809,9 @@ void MainWindow::on_actionPlotShow_triggered()
 
 void MainWindow::slot_timerWaveGene_timeout()
 {
+//    DWORD time_start = GetTickCount(); //从操作系统启动经过的毫秒数
+//    qDebug() << "t：" << time_start << Qt::endl;
+
     static float x;
     uint8_t y1,y2;
     static uint8_t counter=0;
@@ -849,7 +912,7 @@ void MainWindow::on_checkBoxUseOpenEphysGUI_stateChanged(int arg1)
 void MainWindow::on_lineEditZmqTcpPort_textChanged(const QString &arg1)
 {
     Q_UNUSED(arg1);
-//    port = ui->lineEditZmqTcpPort->text().toInt();
+    port = ui->lineEditZmqTcpPort->text().toInt();
     closeSocket();
     createSocket();
 }
